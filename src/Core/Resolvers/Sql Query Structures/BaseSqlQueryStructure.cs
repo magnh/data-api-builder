@@ -187,8 +187,7 @@ namespace Azure.DataApiBuilder.Core.Resolvers
         /// )
         /// WHERE [table0].[fk.SourceColumn] = [@param value from request]
         ///
-        /// Process self-joining entity relationship. Excludes support for processing
-        /// self-joining relationships in GraphQL query filters (nested filter entities).
+        /// Process self-joining entity relationship for both nested queries and filter EXISTS clauses.
         /// </summary>
         /// <param name="fkLookupKey">{entityName, relationshipName} used to lookup foreign key metadata.</param>
         /// <param name="subqueryTargetTableAlias">The table alias of the target entity/ subject of the sub-query.</param>
@@ -202,12 +201,20 @@ namespace Azure.DataApiBuilder.Core.Resolvers
         {
             if (MetadataProvider.RelationshipToFkDefinition.TryGetValue(key: fkLookupKey, out ForeignKeyDefinition? fkDef))
             {
+                // For a "parent" relationship:
+                // - Source columns (referencing): parent_id (FK in the child row)
+                // - Target columns (referenced): id (PK in the parent row)
+                // Both OUTER APPLY and EXISTS need: outer.[parent_id] = subquery.[id]
+                // i.e., outer.[source_col] = subquery.[target_col]
+                List<string> leftColumns = fkDef.ResolveSourceColumns();
+                List<string> rightColumns = fkDef.ResolveTargetColumns();
+
                 subQuery.Predicates.AddRange(
                         CreateJoinPredicates(
                             leftTableAlias: SourceAlias,
-                            leftColumnNames: fkDef.ResolveSourceColumns(),
+                            leftColumnNames: leftColumns,
                             rightTableAlias: subqueryTargetTableAlias,
-                            rightColumnNames: fkDef.ResolveTargetColumns()));
+                            rightColumnNames: rightColumns));
             }
             else
             {
